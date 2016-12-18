@@ -28,5 +28,5 @@ before_install:
 script:
   - mkdir build
   - cd build
-  - cmake -DCMAKE_CXX_COMPILER=$COMPILER -DCMAKE_BUILD_TYPE=Release .. && make
+  - cmake -DCMAKE_CXX_COMPILER=$COMPILER .. && make
   - ./AX_HASHLIST_TEST
