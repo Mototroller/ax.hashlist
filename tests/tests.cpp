@@ -2,10 +2,21 @@
 
 #include <cmath>
 #include <list>
+#include <memory>
 
 #include <ax.hashlist.hpp>
 
 using namespace ax;
+
+struct counter {
+    static size_t ctor_counter;
+    static size_t dtor_counter;
+    
+    counter(int)  { ++ctor_counter; }
+    ~counter()    { ++dtor_counter; }
+};
+size_t counter::ctor_counter = 0;
+size_t counter::dtor_counter = 0;
 
 void haslist_test() {
     const size_t N = 2048;
@@ -41,7 +52,11 @@ void haslist_test() {
     
     l.clear();
     
+    LIGHT_TEST(l != r);
+    
     LIGHT_TEST(l.size() == 0);
+    
+    LIGHT_TEST(l.load_factor() == 0.0f);
     
     auto& hlist = l;
     std::list<hl_t::value_type> slist;
@@ -66,6 +81,7 @@ void haslist_test() {
                 slist.emplace_back(key, val);
             } else { // there is key, remove
                 LIGHT_TEST(sfound != slist.end());
+                LIGHT_TEST(*sfound == *hfound);
                 hlist.erase(hfound);
                 slist.erase(sfound);
             }
@@ -74,6 +90,7 @@ void haslist_test() {
             size_t idx = key % amount;
             auto hiter = hlist.begin();
             auto siter = slist.begin();
+            
             for(size_t j = 0; j < idx; ++j) {
                 (j % 2 == 0) ? ++hiter : hiter++;
                 (j % 2 == 0) ? ++siter : siter++;
@@ -93,8 +110,6 @@ void haslist_test() {
             
             hlist.erase(--hlist.end());
             slist.erase(--slist.end());
-            
-            //stdprintf("Removed {%%, %%}", siter->first, siter->second);
         }
         
         if(i % 1_KIB == 0) {
@@ -102,6 +117,31 @@ void haslist_test() {
             bool equal = std::equal(slist.begin(), slist.end(), hlist.begin());
             LIGHT_TEST(equal);
         }
+    }
+    
+    {
+        // Special stored type
+        using hlp_t = hl::hashlist<int, std::unique_ptr<int>, N>;
+        
+        hlp_t lp;
+        lp.emplace_back(0, nullptr);
+        // lp.push_back(std::make_pair(0, nullptr)); // error
+        // auto rp = lp; // error
+    }
+    
+    {
+        // Construction-destruction
+        using hlc_t = hl::hashlist<int, counter, N>;
+        hlc_t cl;
+        
+        for(size_t i = 0; i < cl.max_size(); ++i)
+            cl.emplace_back(i, i);
+        
+        LIGHT_TEST(counter::ctor_counter == cl.max_size());
+        
+        cl.clear();
+        
+        LIGHT_TEST(counter::dtor_counter == cl.max_size());
     }
 }
 

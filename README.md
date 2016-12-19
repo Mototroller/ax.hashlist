@@ -22,7 +22,7 @@ To be continued...
 ### TODO:
 
 * performance measurements
-* move spaghetti definitions to base .hpp (?)
-* disable some functions by SFINAE (`destructible`, copy c-tor etc.)
+* implement assignment operator
+* implement standard `emplace_back` overloadings (see `std::map`)
 * advanced hashing strategies (default one is a little bit overweight and acceptable for literal type keys only)
 * do small changes to satisfy `std::unordered_multimap`'s behavior

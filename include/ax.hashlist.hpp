@@ -61,12 +61,13 @@ namespace ax { namespace hl {
             /// Pointer to cell
             DefPtr ptr_;
             
+            /// Can be constructed only by hashlist
+            iterator_base(DefPtr ptr) : ptr_(ptr) {}
+            
         public:
             using iterator_category = std::bidirectional_iterator_tag;
             
             /// Other typedefs are inherited from traits: iterator ~ pointer
-            
-            iterator_base(DefPtr ptr);
             
             // ###################### Iterator ###################### //
             
@@ -80,27 +81,40 @@ namespace ax { namespace hl {
                     std::is_convertible<D, DefPtr>::value &&
                     std::is_convertible<V, ValPtr>::value
                 >::type
-            > iterator_base(iterator_base<D,V> const& other);
+            > iterator_base(iterator_base<D,V> const& other) :
+                iterator_base(other.ptr_) {}
             
             iterator_base& operator=(iterator_base const& other) = default;
             
             ~iterator_base() = default;
             
-            void swap(iterator_base& other) noexcept;
+            void swap(iterator_base& other) noexcept {
+                std::swap(ptr_, other.ptr_); }
             
-            inline typename it::reference operator*() const;
+            inline typename it::reference operator*() const {
+                return ptr_->value(); }
             
-            inline typename it::pointer operator->() const;
+            inline typename it::pointer operator->() const {
+                return &(this->operator*()); }
             
-            iterator_base& operator++();
+            iterator_base& operator++() {
+                ptr_ += ptr_->next_offset;
+                return *this;
+            }
             
             // ###################### InputIterator ###################### //
             
-            const bool operator==(iterator_base const& other) const;
+            friend const bool operator==(iterator_base const& lh, iterator_base const& rh) {
+                return lh.ptr_ == rh.ptr_; }
             
-            const bool operator!=(iterator_base const& other) const;
+            friend const bool operator!=(iterator_base const& lh, iterator_base const& rh) {
+                return !(lh.ptr_ == rh.ptr_); }
             
-            iterator_base operator++(int);
+            iterator_base operator++(int) {
+                iterator_base old(*this);
+                this->operator++();
+                return old;
+            }
             
             // ###################### ForwardIterator ###################### //
             
@@ -110,9 +124,16 @@ namespace ax { namespace hl {
             
             // ###################### BidirectionalIterator ###################### //
             
-            iterator_base& operator--();
+            iterator_base& operator--() {
+                ptr_ += ptr_->prev_offset;
+                return *this;
+            }
             
-            iterator_base operator--(int);
+            iterator_base operator--(int) {
+                iterator_base old(*this);
+                this->operator--();
+                return old;
+            }
             
             // --- RandomAccessIterator can't be implemented efficiently -- ///
         };
@@ -132,23 +153,30 @@ namespace ax { namespace hl {
         using reverse_iterator       = std::reverse_iterator<iterator>;
         using const_reverse_iterator = std::reverse_iterator<const_iterator>;
         
-        hashlist();
+        /// Default c-tor, leaves storage uninitialized
+        hashlist() :
+            header_(0x0) {
+            cells_[0].next_offset = 0;
+            cells_[0].prev_offset = 0;
+        }
         
-        hashlist(hashlist const& other) = default;
+        hashlist(hashlist const& other) : hashlist() {
+            copy_impl(other); }
         
-        hashlist& operator=(hashlist const& other) = default;
         
-        ~hashlist();
+        hashlist& operator=(hashlist const& other) = delete;
+        
+        ~hashlist() {
+            clear(); }
         
         
         friend const bool operator==(hashlist const& lh, hashlist const& rh) {
-            return lh.size() != rh.size() ? false :
-                   std::equal(lh.begin(), lh.end(), rh.begin());
-        }
+            return lh.size() == rh.size() && std::equal(lh.begin(), lh.end(), rh.begin()); }
         
         friend const bool operator!=(hashlist const& lh, hashlist const& rh) {
             return !(lh == rh); }
         
+        /// WARNING: uses binary swap for storage instead of value_type::swap
         friend void swap(hashlist const& lh, hashlist const& rh) {
             std::swap(lh.header_, rh.header_);
             std::swap(lh.cells_,  rh.cells_);
@@ -157,36 +185,47 @@ namespace ax { namespace hl {
         
         // ###################### Capacity ###################### //
         
-        const size_type size() const;
+        const size_type size() const {
+            return header_.count(); }
         
-        static constexpr const size_type max_size();
+        static constexpr const size_type max_size() {
+            return SIZE - 1; }
         
-        const bool empty() const;
+        const bool empty() const {
+            return cells_[0].next_offset == 0; }
         
-        const float load_factor() const;
-        
-        void clear();
+        const float load_factor() const {
+            return size() / max_size(); }
         
         
         // ###################### Modifiers ###################### //
         
-        /// Provides access to unitialized sentinel's object.
-        mapped_type const& get_sentinel() const;
+        void clear() {
+            for(auto i = begin(), e = end(); i != e; i = erase(i)); }
         
-        mapped_type& get_sentinel();
+        /// Provides access to unitialized sentinel's object.
+        mapped_type const& get_sentinel() const {
+            return cells_[0].value().second; }
+        
+        mapped_type& get_sentinel() {
+            return const_cast<mapped_type&>(static_cast<hashlist const*>(this)->get_sentinel()); }
         
         /**
-         * Constructs element
+         * Constructs element in-place.
+         * Provides strong exception guarantee.
          * TODO: to standard, 3 overloads required under hood
          */
         template <typename... Args>
         void emplace_back(key_type const& key, Args&&... args);
         
-        void push_back(const_reference value);
+        void push_back(const_reference value) {
+            emplace_back(value.first, value.second); }
         
-        const_iterator find(key_type const& key) const;
+        const_iterator find(key_type const& key) const {
+            return const_iterator(find_cell(key)); }
         
-        iterator find(key_type const& key);
+        iterator find(key_type const& key) {
+            return iterator(const_cast<cell_t*>(find_cell(key))); }
         
         /**
          * @returns a reference to found or newly inserted (push_back'ed) value
@@ -194,8 +233,9 @@ namespace ax { namespace hl {
          */
         mapped_type& operator[](key_type const& key) = delete;
         
-        /// @returns iterator following the last removed element
-        iterator erase(const_iterator pos);
+        /// @returns iterator following the removed element
+        iterator erase(const_iterator pos) {
+            return iterator(remove_cell(const_cast<cell_t*>(pos.ptr_))); }
         
         
         // ###################### Iterators ###################### //
@@ -207,9 +247,9 @@ namespace ax { namespace hl {
         const_iterator          cbegin()  const { return begin(); }
         
         
-        iterator                end()           { return iterator(&cells_[0]); }
+        iterator                end()           { return iterator(cells_.begin()); }
         
-        const_iterator          end()     const { return const_iterator(&cells_[0]); }
+        const_iterator          end()     const { return const_iterator(cells_.cbegin()); }
         
         const_iterator          cend()    const { return end(); }
         
@@ -233,12 +273,13 @@ namespace ax { namespace hl {
         
         reference               back()          { return *(--end()); }
         
-        
         /// @returns offset of iterator's element inside underlying array
-        const size_t offset_of_element(const_iterator const& citer) const;
+        const size_t offset_of_element(const_iterator const& citer) const {
+            return citer.ptr_ - &(cells_[0]); }
         
         /// @returns iterator by elements offset
-        iterator element_by_offset(size_t idx);
+        iterator element_by_offset(size_t idx) {
+            return iterator(&cells_[idx]); }
         
     private:
         struct cell_t {
@@ -249,13 +290,26 @@ namespace ax { namespace hl {
                 alignof(value_type)
             >::type value_;
             
-            value_type const& value() const;
+            value_type const& value() const {
+                return *reinterpret_cast<const value_type*>(&value_); }
             
-            value_type& value();
+            value_type& value() {
+                return const_cast<value_type&>(static_cast<cell_t const*>(this)->value()); }
         };
         
         std::bitset<SIZE> header_;
         std::array<cell_t, SIZE> cells_;
+        
+        /// Copy c-tor dispatcher, must be applied to empty hashlist
+        template <
+            typename HL,
+            typename = typename std::enable_if<
+                std::is_copy_constructible<typename HL::value_type>::value
+            >::type
+        > void copy_impl(HL const& other) {
+            for(auto const& p : other)
+                push_back(p);
+        }
         
         /// @returns pointer to found cell, &sentinel (==end()) if doesn't exists
         cell_t const* find_cell(keyT const& key) const;
