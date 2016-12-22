@@ -28,25 +28,26 @@ namespace ax { namespace hl {
     template <typename K, typename O, size_t S, class H>
     template <typename... Args>
     auto hashlist<K,O,S,H>::
-    emplace_back(key_type const& key, Args&&... args) -> void {
+    emplace_back(key_type const& key, Args&&... args) -> iterator {
         auto H1 = hasher::h1(key);
         auto H2 = hasher::h2(key);
         auto& sentinel = cells_[0];
         auto& h = header_;
         auto& cs = cells_;
         for(size_t i = 0; i < SIZE; ++i) {
-            size_t idx = (H1 + i*H2) % SIZE;
-            if(idx != 0 && h[idx] == false) {
+            size_t bit = (H1 + i*H2) % SIZE;
+            if(!h[bit]) {
+                size_t idx = 1 + bit;
                 auto& inserted = cs[idx];
                 new(&inserted.value()) value_type(key, std::forward<Args>(args)...);
+                h.flip(bit);
                 
-                h.flip(idx);
                 offset_t sidx(idx);
                 inserted.next_offset = -sidx;
                 inserted.prev_offset = sentinel.prev_offset - sidx;
                 cs[sentinel.prev_offset].next_offset = -inserted.prev_offset;
                 sentinel.prev_offset = sidx;
-                return;
+                return --end();
             }
         }
         throw std::bad_alloc{};
@@ -60,9 +61,10 @@ namespace ax { namespace hl {
         auto const& h = header_;
         auto const& cs = cells_;
         for(size_t i = 0; i < SIZE; ++i) {
-            size_t idx = (H1 + i*H2) % SIZE;
+            size_t bit = (H1 + i*H2) % SIZE;
+            size_t idx = 1 + bit;
             auto const& c = cs[idx];
-            if(h[idx] == true && c.value().first == key)
+            if(h[bit] && c.value().first == key)
                 return &c;
         }
         return &cs[0];
@@ -73,8 +75,9 @@ namespace ax { namespace hl {
     remove_cell(cell_t* cell) -> cell_t* {
         auto& cs = cells_;
         size_t idx = cell - cs.begin();
+        size_t bit = idx - 1;
         
-        header_[idx] = false;
+        header_[bit] = false;
         cell->value().~value_type();
         
         (cell + cell->prev_offset)->next_offset += cell->next_offset;

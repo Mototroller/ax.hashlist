@@ -28,6 +28,23 @@ namespace ax { namespace hl {
     };
     
     /**
+     * Special hash policy for mostly incremental integer keys.
+     * Objects will be stored almost continuously.
+     */
+    template <typename keyT>
+    struct Incremental_integer_fasthash {
+        
+        static_assert(sizeof(keyT) <= sizeof(uint64_t), LOG_HEAD
+            "To use Incremental_integer_fasthash keyT must be less than sizeof(uint64_t)");
+        
+        inline static uint64_t h1(keyT k) {
+            return uint64_t(k); }
+        
+        inline static uint32_t h2(keyT k) {
+            return 1; }
+    };
+    
+    /**
      * Hybrid array-list-map container.
      * @arg SIZE - max number of elements
      * @arg HashPolicy - policy contains hash functions h1() and h2()
@@ -160,9 +177,11 @@ namespace ax { namespace hl {
             cells_[0].prev_offset = 0;
         }
         
+        /// STL-like way: wont compile if value_type isn't copyable
         hashlist(hashlist const& other) : hashlist() {
-            copy_impl(other); }
-        
+            for(auto const& p : other)
+                push_back(p);
+        }
         
         hashlist& operator=(hashlist const& other) = delete;
         
@@ -178,8 +197,9 @@ namespace ax { namespace hl {
         
         /// WARNING: uses binary swap for storage instead of value_type::swap
         friend void swap(hashlist const& lh, hashlist const& rh) {
-            std::swap(lh.header_, rh.header_);
-            std::swap(lh.cells_,  rh.cells_);
+            using std::swap;
+            swap(lh.header_, rh.header_);
+            swap(lh.cells_,  rh.cells_);
         }
         
         
@@ -189,7 +209,7 @@ namespace ax { namespace hl {
             return header_.count(); }
         
         static constexpr const size_type max_size() {
-            return SIZE - 1; }
+            return SIZE; }
         
         const bool empty() const {
             return cells_[0].next_offset == 0; }
@@ -213,13 +233,14 @@ namespace ax { namespace hl {
         /**
          * Constructs element in-place.
          * Provides strong exception guarantee.
+         * @returns an iterator to the inserted element 
          * TODO: to standard, 3 overloads required under hood
          */
         template <typename... Args>
-        void emplace_back(key_type const& key, Args&&... args);
+        iterator emplace_back(key_type const& key, Args&&... args);
         
-        void push_back(const_reference value) {
-            emplace_back(value.first, value.second); }
+        iterator push_back(const_reference value) {
+            return emplace_back(value.first, value.second); }
         
         const_iterator find(key_type const& key) const {
             return const_iterator(find_cell(key)); }
@@ -298,18 +319,11 @@ namespace ax { namespace hl {
         };
         
         std::bitset<SIZE> header_;
-        std::array<cell_t, SIZE> cells_;
+        std::array<cell_t, SIZE + 1> cells_;
         
-        /// Copy c-tor dispatcher, must be applied to empty hashlist
-        template <
-            typename HL,
-            typename = typename std::enable_if<
-                std::is_copy_constructible<typename HL::value_type>::value
-            >::type
-        > void copy_impl(HL const& other) {
-            for(auto const& p : other)
-                push_back(p);
-        }
+        /// General implementation, requires only key moving, TODO
+        template <typename K, typename... Args>
+        void emplace_back_impl(K&& key, Args&&... args);
         
         /// @returns pointer to found cell, &sentinel (==end()) if doesn't exists
         cell_t const* find_cell(keyT const& key) const;

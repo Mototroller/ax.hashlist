@@ -1,5 +1,6 @@
 #include <ax.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <list>
 #include <memory>
@@ -25,7 +26,7 @@ void haslist_test() {
     
     LIGHT_TEST(std::is_standard_layout<decltype(l)>::value);
     
-    LIGHT_TEST(l.max_size() == N - 1);
+    LIGHT_TEST(l.max_size() == N);
     
     size_t amount = l.max_size();
     for(int i = 0; i < amount; ++i) {
@@ -142,6 +143,42 @@ void haslist_test() {
         cl.clear();
         
         LIGHT_TEST(counter::dtor_counter == cl.max_size());
+    }
+    
+    {
+        // Multimap
+        using hlm_t = hl::hashlist<size_t, size_t, N>;
+        
+        for(const size_t div : {
+            size_t{1},
+            size_t{16}, 
+            size_t{256},
+            size_t{N}
+        }) {
+            hlm_t ml;
+            
+            for(size_t i = 0; i < N; ++i)
+                ml.emplace_back(i/div, i);
+            
+            LIGHT_TEST(ml.size() == N);
+            
+            for(size_t i = 0; i < N/div; ++i) {
+                auto range = std::equal_range(
+                    ml.cbegin(),
+                    ml.cend(),
+                    hlm_t::value_type{i, 0},
+                    [](hlm_t::value_type const& lh, hlm_t::value_type const& rh) {
+                        return lh.first < rh.first;
+                    });
+                
+                size_t length = std::distance(range.first, range.second);
+                LIGHT_TEST(length == div);
+                
+                size_t j = 0;
+                for(auto it = range.first; it != range.second; ++it, ++j)
+                    LIGHT_TEST(it->second == i*div + j);
+            }
+        }
     }
 }
 
