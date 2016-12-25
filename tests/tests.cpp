@@ -1,9 +1,12 @@
 #include <ax.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <list>
+#include <map>
 #include <memory>
+#include <fstream>
 
 #include <ax.hashlist.hpp>
 
@@ -182,6 +185,103 @@ void haslist_test() {
     }
 }
 
+void perf() {
+    struct dummy_t {
+        std::array<char, 32> data;
+        dummy_t(char c) :
+            data{42} {
+            volatile char cv = c;
+            data[0] = cv;
+            data[data.size()-1] = cv;
+        };
+    };
+    
+    using hl_t = hl::hashlist<size_t, dummy_t, 1_KIB>;
+    
+    hl_t l;
+    
+    const size_t size = hl_t::max_size();
+    const size_t runs = 256;
+    
+    std::array<std::array<size_t, size>, runs> allocations;
+    std::array<size_t, runs> rows;
+    
+    for(size_t r = 0; r < runs; ++r) {
+        l.clear();
+        auto& run = allocations[r];
+        
+        auto row = rdtsc();
+        for(size_t i = 0; i < size; ++i) {
+            auto t = rdtsc();
+            volatile size_t vi = i;
+            i = vi;
+            
+            l.emplace_back(i, char(i));
+            auto back = l.back();
+            
+            volatile auto b1 = back.first;
+            volatile auto b2 = back.second.data[0];
+            volatile auto b3 = back.second.data[l.back().second.data.size() - 1];
+            b1 = b2 = b3 = b1;
+            
+            run[i] = rdtsc() - t;
+        }
+        rows[r] = rdtsc() - row;
+    }
+    
+    std::ofstream out;
+    out.open("perf.txt");
+    out << "emplace";
+    for(size_t s = 0; s < size; ++s)
+        out << "\t" << (s + 1);
+    out << "\n";
+    for(size_t r = 1; r < runs; ++r) {
+        out << r;
+        for(auto push : allocations[r])
+            out << "\t" << push;
+        out << "\n";
+    }
+    out << "\n\n";
+    
+    size_t findLF = 10;
+    
+    for(size_t r = 1; r <= findLF; ++r) {
+        l.clear();
+        
+        auto& run = allocations[r];
+        size_t sizeLF = size*r/findLF;
+        
+        for(size_t i = 0; i < sizeLF; ++i)
+            l.emplace_back(i, char(i));
+        
+        for(size_t i = 0; i < size; ++i) {
+            auto key = std::rand() % (sizeLF);
+            
+            auto t = rdtsc();
+            auto found = l.find(key);
+            volatile auto f1 = found->first;
+            volatile auto f2 = found->second.data[0];
+            volatile auto f3 = found->second.data[l.back().second.data.size() - 1];
+            f1 = f2 = f3 = f1;
+            run[i] = rdtsc() - t;
+        }
+    }
+    
+    for(size_t s = 1; s <= findLF; ++s)
+        out << "\t" << s*10 << "%";
+    out << "\n";
+    for(size_t i = 0; i < size; ++i) {
+        for(size_t r = 1; r <= findLF; ++r)
+            out << "\t" << allocations[r][i];
+        out << "\n";
+    }
+    
+    out << "\n\n";
+    
+    out.close();
+}
+
 int main() {
     haslist_test();
+    perf();
 }

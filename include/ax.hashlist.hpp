@@ -215,7 +215,7 @@ namespace ax { namespace hl {
             return cells_[0].next_offset == 0; }
         
         const float load_factor() const {
-            return size() / max_size(); }
+            return 1.0f * size() / max_size(); }
         
         
         // ###################### Modifiers ###################### //

@@ -6,7 +6,7 @@ Flat fixed size STL-compatible container, hybrid of `std::(array-list-unordered_
 * Fixed size (same as `std::array`)
 * Navigation and finding based on offsets
   * ...so it can be mmap'ed and **shared between** threads and **processes**
-* Cache- and branch- friendly with some aditional tuning
+* Cache- and branch- friendly with some additional tuning
 * Complexity depends on load factor and Hasher tuning, best performance while rarefied
 * Under hood: doubly linked list with sentinel + open addressing hash table (uses double hashing)
 
@@ -21,10 +21,36 @@ For now 2 default hashing strategies are provided:
 * tuned `FNV_1` for general purposes
 * `Incremental_integer_fasthash` for integer mostly incremental keys
 
-To be continued...
+### Performance (beta):
+
+Test machine:
+
+```
+model name      : Intel(R) Core(TM) i7-4700MQ CPU @ 2.40GHz
+cache size      : 6144 KB
+cpu cores       : 4
+cache_alignment : 64
+```
+
+```cpp
+struct dummy_t {
+    std::array<char, 32> data;
+    dummy_t(char c) :
+        data{42} {
+        volatile char cv = c;
+        data[0] = cv;
+        data[data.size()-1] = cv;
+    };
+};
+using hl_t = hl::hashlist<size_t, dummy_t, 1024>;
+```
+
+![emplace](/emplace.svg)
+
+![find](/find.svg)
 
 ### TODO:
 
-* performance measurements
+* performance measurements (extend)
 * implement assignment operator
-* try to emulate standard `emplace_back` behaviour (`std::map`'s' way is unacceptable due to fixed storage)
+* try to emulate standard `emplace_back` behaviour (`std::map`'s way is unacceptable due to fixed storage)
