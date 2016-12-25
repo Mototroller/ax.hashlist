@@ -45,9 +45,9 @@ struct dummy_t {
 using hl_t = hl::hashlist<size_t, dummy_t, 1024>;
 ```
 
-![emplace](/emplace.svg)
+![Alt emplace](https://rawgit.com/Mototroller/ax.hashlist/master/emplace.svg)
 
-![find](/find.svg)
+![Alt find](https://rawgit.com/Mototroller/ax.hashlist/master/find.svg)
 
 ### TODO:
 
